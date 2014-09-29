@@ -25,7 +25,7 @@ public class Transactions {
     private final static Random rnd = new Random();
     public static final int NUMBER_OF_ACCOUNTS = 100;
     public static final int INITIAL_BALANCE = 100;
-    public static final int NUMBER_OF_TRANSACTIONS = 10_000;
+    public static final int NUMBER_OF_TRANSACTIONS = 100_00;
 
     private final List<Transfer> transactions = new ArrayList<>();
 

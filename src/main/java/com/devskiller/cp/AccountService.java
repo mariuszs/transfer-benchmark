@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public class AccountService {
 
     private Configuration.MODE mode;
-    private final int numberOfAccounts;
     private final long initialBalance;
 
     private Map<Integer, Account> accounts;
@@ -21,7 +20,7 @@ public class AccountService {
 
     public AccountService(final Configuration configuration) {
         mode = configuration.getMode();
-        numberOfAccounts = configuration.getNumberOfAccounts();
+        int numberOfAccounts = configuration.getNumberOfAccounts();
         initialBalance = configuration.getInitialBalance();
 
         accounts = new HashMap<>(numberOfAccounts);
@@ -52,43 +51,54 @@ public class AccountService {
 
         Account accountFrom = get(transfer.getFrom());
         Account accountTo = get(transfer.getTo());
-
-        if (mode.equals(Configuration.MODE.REFS)) {
-            try {
-                LockingTransaction.runInTransaction(
-                        () -> {
-
-                            accountFrom.withdraw(transfer.getAmount());
-
-                            TimeUnit.MILLISECONDS.sleep(1);
-
-                            accountTo.deposit(transfer.getAmount());
-
-                            return null;
-                        });
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        } else {
-
-            synchronized (this) {
-                final boolean withdrawed = accountFrom.withdraw(transfer.getAmount());
-
-                if (!withdrawed) {
-                    failed();
-                    return;
-                }
+        switch (mode) {
+            case REFS:
                 try {
-                    TimeUnit.MILLISECONDS.sleep(1);
-                } catch (InterruptedException e) {
+                    LockingTransaction.runInTransaction(
+                            () -> {
+
+                                accountFrom.withdraw(transfer.getAmount());
+
+                                TimeUnit.MILLISECONDS.sleep(1);
+
+                                accountTo.deposit(transfer.getAmount());
+
+                                return null;
+                            });
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
+                break;
+            case ATOMIC:
+                if (transfer(transfer, accountFrom, accountTo)) return;
+                break;
+            case UNSAFE:
 
-                accountTo.deposit(transfer.getAmount());
-            }
+                synchronized (this) {
+                    if (transfer(transfer, accountFrom, accountTo)) return;
+                }
+                break;
+
         }
         transactionCount.incrementAndGet();
 
+    }
+
+    private boolean transfer(Transfer transfer, Account accountFrom, Account accountTo) {
+        final boolean withdrawed = accountFrom.withdraw(transfer.getAmount());
+
+        if (!withdrawed) {
+            failed();
+            return true;
+        }
+        try {
+            TimeUnit.MILLISECONDS.sleep(1);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        accountTo.deposit(transfer.getAmount());
+        return false;
     }
 
     private void failed() {
