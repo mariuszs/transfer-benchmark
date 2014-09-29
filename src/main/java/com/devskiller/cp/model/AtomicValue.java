@@ -12,7 +12,7 @@ public class AtomicValue implements Value {
 
     @Override
     public long get() {
-        return (Long) balance.get();
+        return balance.get();
     }
 
     @Override

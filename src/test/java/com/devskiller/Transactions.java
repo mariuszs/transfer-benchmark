@@ -6,9 +6,6 @@ import com.devskiller.cp.model.Account;
 import com.devskiller.cp.model.Configuration;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -30,11 +27,9 @@ public class Transactions {
     public static final int INITIAL_BALANCE = 100;
     public static final int NUMBER_OF_TRANSACTIONS = 10_000;
 
-    private static List<Transfer> transactions = new ArrayList<>();
-    private AccountService accountService;
+    private final List<Transfer> transactions = new ArrayList<>();
 
-    @BeforeClass
-    public static void init() throws Exception {
+    public Transactions() {
         for (int i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
             final Transfer transfer = new Transfer(
                     rnd.nextInt(5),
@@ -44,58 +39,42 @@ public class Transactions {
         }
     }
 
-    @Before
-    public void setUp() throws Exception {
-
-        accountService = new AccountService(new Configuration.Builder()
-                .initialBalance(INITIAL_BALANCE)
-                .mode(Configuration.MODE.UNSAFE)
-                .numberOfAccounts(NUMBER_OF_ACCOUNTS)
-                .build());
-    }
-
-    @After
-    public void tearDown() throws Exception {
-//        accountService.reset();
-    }
-
     @Test
-    @Parameters({"REFS", "UNSAFE", "ATOMIC"})
+    @Parameters({"ATOMIC", "REFS", "UNSAFE"})
     public void refs(String modeName) throws Exception {
-        final Configuration.MODE mode = Configuration.MODE.valueOf(modeName);
-        accountService.setMode(mode);
+        final AccountService accountService = accountService(Configuration.MODE.valueOf(modeName));
 
-        System.out.println("-------------------------");
-        System.out.println("Mode " + mode);
         final long startTime = System.currentTimeMillis();
         transactions.parallelStream().forEach(accountService::transfer);
+
+        await().atMost(1, TimeUnit.MINUTES).until(transferCompleted(accountService));
         long estimatedTime = System.currentTimeMillis() - startTime;
-        System.out.println(estimatedTime + "ms");
 
-        report();
-        await().atMost(1, TimeUnit.MINUTES).until(transferCompleted());
-        then(total()).isEqualTo(NUMBER_OF_ACCOUNTS * INITIAL_BALANCE);
-    }
-
-    public void report() throws InterruptedException {
+        System.out.println("Test " + modeName + " with result " + estimatedTime + "ms");
 
         final Collection<Account> accounts = accountService.balances().values();
+        final long total = accounts.stream().mapToLong(Account::balance).sum();
         System.out.println(String.format("Total balance : $%s\t Number of transactions: %s (invalid: %s)\t\t min=$%s.\t max=$%s,\t average=$%s",
-                        total(),
+                        total,
                         String.valueOf(accountService.getTransactionCount()),
                         String.valueOf(accountService.getInvalidTransactionCount()),
                         accounts.stream().mapToLong(Account::balance).min().orElseGet(() -> -1),
                         accounts.stream().mapToLong(Account::balance).max().orElseGet(() -> -1),
                         accounts.stream().mapToLong(Account::balance).average().orElseGet(() -> -1))
         );
+        then(total).isEqualTo(NUMBER_OF_ACCOUNTS * INITIAL_BALANCE);
     }
 
-    private Callable<Boolean> transferCompleted() {
+    private AccountService accountService(Configuration.MODE unsafe) {
+       return new AccountService(new Configuration.Builder()
+                .initialBalance(INITIAL_BALANCE)
+                .mode(unsafe)
+                .numberOfAccounts(NUMBER_OF_ACCOUNTS)
+                .build());
+    }
+
+    private Callable<Boolean> transferCompleted(AccountService accountService) {
         return () -> accountService.getInvalidTransactionCount() + accountService.getTransactionCount() == NUMBER_OF_TRANSACTIONS;
-    }
-
-    private long total() {
-        return accountService.balances().values().stream().mapToLong(Account::balance).sum();
     }
 
 }

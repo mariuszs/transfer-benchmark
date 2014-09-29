@@ -37,4 +37,9 @@ public class Account {
         return balance.get();
     }
 
+    public void set(long initialBalance) {
+        if(balance() > initialBalance) {
+
+        }
+    }
 }
